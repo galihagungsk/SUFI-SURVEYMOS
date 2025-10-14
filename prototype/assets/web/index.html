@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Form Leasing Mobil</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h2>Form Leasing Mobil</h2>
+
+      <div class="form-group">
+        <label>Nama</label>
+        <input type="text" id="nama" placeholder="masukkan nama" />
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>Nomor Telepon</label>
+        <input type="text" id="telepon" placeholder="masukkan nomor telepon" />
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>Jenis Kendaraan</label>
+        <select id="jenis" required>
+          <option value="" disabled selected>pilih</option>
+          <option value="Mobil">Mobil</option>
+          <option value="Motor">Motor</option>
+        </select>
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>Model Kendaraan</label>
+        <select id="model" required>
+          <option value="" disabled selected>pilih</option>
+          <option value="Avanza">Toyota Avanza</option>
+          <option value="Innova">Toyota Innova</option>
+          <option value="Civic">Honda Civic</option>
+          <option value="HRV">Honda HR-V</option>
+        </select>
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>Harga Kendaraan (Rp)</label>
+        <input type="number" id="harga" placeholder="masukkan harga" />
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>DP (%)</label>
+        <input type="number" id="dp" placeholder="contoh: 30" />
+      </div>
+      <br />
+
+      <div class="form-group">
+        <label>Tenor (bulan)</label>
+        <select id="tenor">
+          <option value="12">12 bulan</option>
+          <option value="24">24 bulan</option>
+          <option value="36">36 bulan</option>
+          <option value="48">48 bulan</option>
+          <option value="60">60 bulan</option>
+        </select>
+      </div>
+      <br />
+      <br />
+
+      <button onclick="hitungCicilan()">Hitung Cicilan</button>
+
+      <div class="result" id="hasil"></div>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>
