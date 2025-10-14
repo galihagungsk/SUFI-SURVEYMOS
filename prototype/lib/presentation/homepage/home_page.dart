@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:prototype/service/local_helper.dart';
 import 'package:prototype/service/storage_service.dart';
 import 'package:prototype/service/url.dart';
 import 'package:prototype/utils/db_sqf_helper.dart';
@@ -55,6 +56,14 @@ class _HomePageState extends State<HomePage> {
         debugPrint("⚠️ Tidak ada data lokal untuk dikirim.");
         return;
       }
+      var pertanyaan = LocalJsonHelper.bacaDataFormDariFile(
+        fileName: "pertanyaan.json",
+        folderName: "pertanyaan",
+      );
+      var jawaban = LocalJsonHelper.bacaDataFormDariFile(
+        fileName: "opsi_jawaban.json",
+        folderName: "opsi_jawaban",
+      );
 
       // Gabungkan semua response JSON
       final allResponses = localData
