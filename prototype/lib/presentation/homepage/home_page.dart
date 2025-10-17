@@ -1,13 +1,12 @@
-import 'dart:async';
 import 'dart:convert';
-
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter/services.dart';
 import 'package:prototype/service/local_helper.dart';
-import 'package:prototype/service/storage_service.dart';
-import 'package:prototype/service/url.dart';
-import 'package:prototype/utils/db_sqf_helper.dart';
-import 'package:prototype/utils/network_checker.dart';
+import 'package:prototype/utils/url.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:image_picker/image_picker.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,195 +16,164 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  InAppWebViewController? webViewController;
-  StorageService storage = StorageService();
-  String messageFromJs = "";
-  StreamSubscription<bool>? _connectionStream;
+  late final WebViewController _controller;
   bool webReady = false;
-  String test = "";
+  String messageFromJs = "";
 
   @override
   void initState() {
     super.initState();
-    test = storage.readData("user").toString();
+    _initWebView();
   }
 
-  Future<List<dynamic>> getAllOpsiJawaban() async {
-    final db = await DBSqfHelper.database;
-    final result = await db.query("opsi_jawaban", orderBy: "part_index ASC");
+  /// 🔧 Setup WebViewController
+  void _initWebView() {
+    // Gunakan parameter default untuk Android
+    const params = PlatformWebViewControllerCreationParams();
 
-    if (result.isEmpty) return [];
+    final controller = WebViewController.fromPlatformCreationParams(params);
 
-    final combinedJson = result.map((r) => r["opsi_response"] as String).join();
-    return jsonDecode(combinedJson);
+    if (controller.platform is AndroidWebViewController) {
+      AndroidWebViewController.enableDebugging(true);
+      final androidCtrl = controller.platform as AndroidWebViewController;
+
+      // Izinkan media playback tanpa gesture
+      androidCtrl.setMediaPlaybackRequiresUserGesture(false);
+
+      // 🔹 Tangani file chooser (kamera/galeri)
+      androidCtrl.setOnShowFileSelector(_androidFilePicker);
+    }
+
+    _controller = controller
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(const Color(0xFFFFFFFF))
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (url) {
+            debugPrint("🌐 Memuat halaman: $url");
+          },
+          onPageFinished: (url) async {
+            debugPrint("✅ Halaman selesai dimuat: $url");
+
+            // Beri sinyal ke halaman web bahwa Flutter siap
+            await _controller.runJavaScript(
+              "if(window.onWebReady){onWebReady();} else if(window.receiveDataFromFlutter){receiveDataFromFlutter({status:'ready'});}",
+            );
+          },
+          onWebResourceError: (error) {
+            debugPrint("❌ Error load web: ${error.description}");
+          },
+        ),
+      )
+      ..addJavaScriptChannel(
+        'FlutterChannel',
+        onMessageReceived: (message) async {
+          debugPrint("📩 JS → Flutter: ${message.message}");
+          setState(() => messageFromJs = message.message);
+
+          // Misal JS kirim event "onWebReady"
+          try {
+            final data = jsonDecode(message.message);
+            if (data["status"] == "ready" && !webReady) {
+              webReady = true;
+              await Future.delayed(const Duration(milliseconds: 500));
+              _sendDataToWebView();
+            }
+          } catch (_) {}
+        },
+      )
+      ..loadRequest(
+        // 🔹 Ganti ini dengan URL halaman web kamu
+        Uri.parse(UrlService.baseUrlWeb),
+      );
   }
 
-  Future<void> _getSendDataToWebView() async {
+  /// 📸 Handler untuk <input type="file"> di Android
+  Future<List<String>> _androidFilePicker(FileSelectorParams params) async {
+    final picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.camera);
+    if (image == null) return [];
+
+    final file = File(image.path);
+
     try {
-      final localData = await DBSqfHelper.getAll("pertanyaan");
-      final opsiData = await getAllOpsiJawaban();
-      debugPrint("📤 Data lokal Pertanyaan dari SQLite: $localData");
-      debugPrint("📤 Data lokal Opsi dari SQLite: $opsiData");
+      // Ubah file path ke content://
+      final uri = await _toContentUri(file);
+      debugPrint("📸 File content URI: $uri");
+      return [uri];
+    } catch (e) {
+      debugPrint("⚠️ Fallback ke file path karena gagal convert: $e");
+      return [file.path];
+    }
+  }
 
-      if (webViewController == null) {
-        debugPrint("⚠️ WebView belum siap.");
-        return;
-      }
+  /// Helper convert File -> content:// URI
+  Future<String> _toContentUri(File file) async {
+    const channel = MethodChannel('file_provider_helper');
+    final uri = await channel.invokeMethod<String>('getContentUri', {
+      'filePath': file.path,
+    });
+    return uri ?? file.path;
+  }
 
-      if (localData.isEmpty) {
-        debugPrint("⚠️ Tidak ada data lokal untuk dikirim.");
-        return;
-      }
-      var pertanyaan = LocalJsonHelper.bacaDataFormDariFile(
+  /// 📤 Kirim data ke halaman JS
+  Future<void> _sendDataToWebView() async {
+    try {
+      // Ambil data dari lokal
+      var pertanyaan = await LocalJsonHelper.bacaDataFormDariFile(
         fileName: "pertanyaan.json",
         folderName: "pertanyaan",
       );
-      var jawaban = LocalJsonHelper.bacaDataFormDariFile(
+      var jawaban = await LocalJsonHelper.bacaDataFormDariFile(
         fileName: "opsi_jawaban.json",
         folderName: "opsi_jawaban",
       );
-
-      // Gabungkan semua response JSON
-      final allResponses = localData
-          .map((item) {
-            final raw = item['pertanyaan_response'];
-            if (raw == null) return [];
-            try {
-              if (raw is String) return jsonDecode(raw);
-              if (raw is List) return raw;
-              return [];
-            } catch (e) {
-              debugPrint("❌ Gagal decode pertanyaan_response: $e");
-              return [];
-            }
-          })
-          .expand((e) => e)
-          .toList();
-
-      final dataToSend = {
-        "pertanyaan": allResponses,
-        "opsi_jawaban": jsonDecode(jsonEncode(opsiData)),
-      };
-      debugPrint("📨 Mengirim ke WebView: $dataToSend");
-
-      // Kirim ke JS
-
-      await webViewController!.evaluateJavascript(
-        source: 'receiveDataFromFlutter(${jsonEncode(dataToSend)});',
+      var dataSub = await LocalJsonHelper.bacaSemuaFileDenganKataKunci(
+        folderName: "process",
+        kataKunci: "submission.json",
       );
+      var dataForm = await LocalJsonHelper.bacaSemuaFileDenganKataKunci(
+        folderName: "process",
+        kataKunci: "form.json",
+      );
+
+      // Format kiriman
+      final dataToSend = {
+        "pertanyaan": pertanyaan,
+        "opsi_jawaban": jawaban,
+        "process": dataSub,
+        "form": dataForm,
+      };
+
+      // Kirim ke web
+      final jsonString = jsonEncode(dataToSend);
+      debugPrint("📨 Kirim ke WebView: $jsonString");
+
+      await _controller.runJavaScript('receiveDataFromFlutter($jsonString);');
     } catch (e, s) {
-      debugPrint("❌ Terjadi error saat mengirim data ke WebView: $e");
+      debugPrint("❌ Error kirim data ke JS: $e");
       debugPrintStack(stackTrace: s);
     }
   }
 
   @override
-  void dispose() {
-    if (_connectionStream is StreamSubscription) {
-      (_connectionStream as StreamSubscription).cancel();
-    }
-    super.dispose();
-  }
-
-  void _registerJSHandler(InAppWebViewController controller) {
-    controller.addJavaScriptHandler(
-      handlerName: "jawaban",
-      callback: (args) async {
-        if (args.isEmpty) return "No data received";
-
-        String rawData = args[0].toString();
-
-        try {
-          setState(() {
-            messageFromJs = rawData;
-          });
-          final decoded = jsonDecode(rawData);
-          await DBSqfHelper.insert('jawaban', {
-            "jawaban_response": jsonEncode(decoded),
-          });
-        } catch (e) {
-          debugPrint("Not JSON: $rawData");
-        }
-
-        return "Flutter received: $rawData";
-      },
-    );
-  }
-
-  void _sendToWebView(InAppWebViewController controller) {
-    controller.addJavaScriptHandler(
-      handlerName: "onWebReady",
-      callback: (args) async {
-        debugPrint("✅ WebView sudah siap menerima data dari Flutter");
-        webReady = true;
-
-        // Beri sedikit waktu agar semua elemen DOM benar-benar siap
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // Kirim data dari Flutter ke halaman Web
-        await _getSendDataToWebView();
-
-        return {'status': 'ok'};
-      },
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Prototype")),
+      appBar: AppBar(title: const Text("Prototype WebView")),
       body: Column(
         children: [
-          Expanded(
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(
-                url: WebUri(UrlService.baseUrlWeb + UrlService.endWebHome),
-              ),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                geolocationEnabled: true,
-              ),
-
-              // 🔹 Saat WebView dibuat
-              onWebViewCreated: (controller) {
-                webViewController = controller;
-
-                // Handler dari JS -> Flutter
-                _registerJSHandler(controller);
-
-                // 🔹 Dipanggil dari JS saat halaman sudah siap
-                _sendToWebView(controller);
-
-                // Handler tambahan jika mau debug
-                controller.addJavaScriptHandler(
-                  handlerName: "onDataReceived",
-                  callback: (args) {
-                    debugPrint("📩 JS mengkonfirmasi data diterima: $args");
-                    return {'ack': true};
-                  },
-                );
-              },
-
-              // 🔹 Debug log bila perlu
-              onConsoleMessage: (controller, consoleMessage) {
-                debugPrint(
-                  "🧠 [JS Console] ${consoleMessage.messageLevel}: ${consoleMessage.message}",
-                );
-              },
-            ),
-          ),
+          Expanded(child: WebViewWidget(controller: _controller)),
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade200,
+            padding: const EdgeInsets.all(12),
+            color: Colors.grey.shade100,
             child: Text(
-              "Message from JS: $messageFromJs",
-              style: const TextStyle(fontSize: 16),
+              "📩 Pesan dari JS: $messageFromJs",
+              style: const TextStyle(fontSize: 15),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.blue.shade50,
-            child: Text(test, style: const TextStyle(fontSize: 16)),
+          ElevatedButton(
+            onPressed: _sendDataToWebView,
+            child: const Text("Kirim Data ke WebView"),
           ),
         ],
       ),

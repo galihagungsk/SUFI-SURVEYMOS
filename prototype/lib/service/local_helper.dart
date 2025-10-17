@@ -119,4 +119,57 @@ class LocalJsonHelper {
       return null;
     }
   }
+
+  /// Baca semua file JSON di folder tertentu dan kembalikan hanya datanya (tanpa nama file)
+  static Future<List<dynamic>> bacaSemuaFileDenganKataKunci({
+    String folderName = "data",
+    String? kataKunci, // bisa null, berarti ambil semua
+  }) async {
+    final List<dynamic> hasil = [];
+
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final targetDir = Directory("${dir.path}/$folderName");
+
+      // Pastikan folder ada
+      if (!await targetDir.exists()) {
+        debugPrint("⚠️ Folder $folderName belum ada.");
+        return hasil;
+      }
+
+      // Ambil semua file dalam folder
+      final semuaFile = targetDir.listSync();
+
+      // Filter hanya file JSON, dan (opsional) mengandung kata kunci
+      final fileJson = semuaFile.where((f) {
+        if (f is! File) return false;
+        final name = f.path.split(Platform.pathSeparator).last.toLowerCase();
+        final cocokKataKunci =
+            kataKunci == null || name.contains(kataKunci.toLowerCase());
+        return name.endsWith(".json") && cocokKataKunci;
+      }).toList();
+
+      debugPrint(
+        "📂 Ditemukan ${fileJson.length} file JSON${kataKunci != null ? " dengan kata kunci '$kataKunci'" : ""}.",
+      );
+
+      // Baca setiap file JSON dan tambahkan datanya ke list hasil
+      for (final file in fileJson) {
+        try {
+          final jsonString = await File(file.path).readAsString();
+          final data = jsonDecode(jsonString);
+          hasil.add(data);
+        } catch (e) {
+          debugPrint("⚠️ Gagal membaca file ${file.path}: $e");
+        }
+      }
+
+      debugPrint("✅ Berhasil membaca ${hasil.length} file JSON.");
+      return hasil;
+    } catch (e, st) {
+      debugPrint("❌ Gagal membaca semua file JSON: $e");
+      debugPrint(st.toString());
+      return hasil;
+    }
+  }
 }

@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:prototype/data/model/user_model.dart';
-import 'package:prototype/service/url.dart';
+import 'package:prototype/utils/url.dart';
 
 abstract class UserRemoteDataSource {
   Future<UserModel> login(String username, String password);
