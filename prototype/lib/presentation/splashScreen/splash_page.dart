@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:prototype/service/storage_service.dart';
 import 'package:prototype/service/sync_service.dart';
-import 'package:prototype/utils/db_sqf_helper.dart';
+// import 'package:prototype/utils/db_sqf_helper.dart';
 import 'package:prototype/utils/enum.dart';
 // import 'package:flutter_spinkit/flutter_spinkit.dart';
 
@@ -47,7 +47,7 @@ class _SplashPageState extends State<SplashPage> {
       // Jalankan fungsi berdasarkan step
       switch (currentStep) {
         case LoadingStep.loadingConfig:
-          await DBSqfHelper.database; // Tunggu inisialisasi DB selesai
+          // await DBSqfHelper.database; // Tunggu inisialisasi DB selesai
           break;
         case LoadingStep.preparingUserData:
           await SyncService().syncDataForm(); // Tunggu sync data selesai

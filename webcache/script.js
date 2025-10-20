@@ -10,11 +10,17 @@ window.addEventListener("load", () => {
     return;
   }
 
-  if (window.FlutterChannel) {
-    window.FlutterChannel.postMessage(JSON.stringify({ status: "ready" }));
-    console.log("✅ Mengirim sinyal onWebReady ke FlutterChannel");
+  // ✅ Kirim "ready" ke Flutter menggunakan flutter_inappwebview
+  if (window.flutter_inappwebview) {
+    window.flutter_inappwebview.callHandler(
+      "FlutterChannel",
+      JSON.stringify({ status: "ready" })
+    );
+    console.log(
+      "✅ Mengirim sinyal onWebReady ke FlutterChannel (InAppWebView)"
+    );
   } else {
-    console.warn("⚠️ FlutterChannel belum tersedia");
+    console.warn("⚠️ flutter_inappwebview belum tersedia");
   }
 
   window.flutterReady = true;
@@ -22,7 +28,7 @@ window.addEventListener("load", () => {
 });
 
 // ===============================
-// 🔁 Terima data dari Flutter
+// 🔁 Terima data dari Flutter (Fungsi ini tetap sama, Flutter akan panggil manual)
 // ===============================
 function receiveDataFromFlutter(data) {
   try {
@@ -36,8 +42,10 @@ function receiveDataFromFlutter(data) {
 
     window.flutterReceivedData = data;
 
-    if (window.FlutterChannel) {
-      window.FlutterChannel.postMessage(
+    // ✅ Kirim respon balik ke Flutter via InAppWebView
+    if (window.flutter_inappwebview) {
+      window.flutter_inappwebview.callHandler(
+        "FlutterChannel",
         JSON.stringify({
           status: "ok",
           receivedKeys: Object.keys(data),
@@ -159,6 +167,7 @@ function tampilkanDetail(
   }
 
   let currentData = formData.data ? [...formData.data] : [];
+  let cekData = [];
 
   function getValue(question, data) {
     if (!question || !Array.isArray(data)) return "";
@@ -314,78 +323,75 @@ function tampilkanDetail(
     formContainer.appendChild(pageEl);
   });
 
-  // ===============================
   // 📸 Handler kamera & file upload (format compact)
-  // ===============================
-  formContainer.querySelectorAll(".btn-camera").forEach((btn) => {
+  document.querySelectorAll(".btn-camera").forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("data-target");
-      const input = document.getElementById(targetId);
-      if (input) input.click();
+      document.getElementById(targetId).click();
     });
   });
 
+  // ✅ Perbaikan typo selector (ini sebelumnya menyebabkan JS berhenti total)
+  formContainer.querySelectorAll('input[type="text"]').forEach((textInput) => {
+    textInput.addEventListener("input", (e) => {
+      const qid = parseInt(e.target.dataset.questionId);
+      const value = e.target.value;
+      const entry = {
+        submission_id: submission.submission_id,
+        question_id: qid,
+        value: value,
+        lat: 2,
+        lon: 2,
+      };
+
+      cekData.push(entry);
+
+      const existing = currentData.find((d) => d.question_id === qid);
+      if (existing) existing.value = value;
+      else currentData.push(entry);
+    });
+  });
+
+  // ✅ Perbaikan besar untuk ambil foto & masuk ke cekData
   formContainer.querySelectorAll('input[type="file"]').forEach((fileInput) => {
     fileInput.addEventListener("change", (e) => {
       const file = e.target.files[0];
-      const wrapper = e.target.closest(".photo-upload-wrapper");
-      const infoEl = wrapper.querySelector(".file-info");
-      const qid = parseInt(e.target.dataset.questionId);
-      if (!qid || !file) return;
-
-      const oldPreview = wrapper.querySelector(".preview-thumb");
-      if (oldPreview) oldPreview.remove();
-
-      infoEl.textContent = `📷 ${file.name}`;
-      infoEl.style.color = "#007bff";
-
-      const img = document.createElement("img");
-      img.className = "preview-thumb";
-      img.style.maxWidth = "140px";
-      img.style.borderRadius = "8px";
-      img.style.marginTop = "6px";
-      img.style.display = "block";
-      infoEl.insertAdjacentElement("afterend", img);
+      if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = async () => {
+      const qid = parseInt(e.target.getAttribute("data-question-id"));
+      const parent = e.target.closest(".photo-upload-wrapper");
+      const infoEl = parent.querySelector(".file-info");
+      const imgPreview =
+        parent.querySelector(".preview-thumb") || document.createElement("img");
+
+      reader.onload = () => {
         const base64DataURL = reader.result;
-        img.src = base64DataURL;
         const base64Data = base64DataURL.split(",")[1];
 
-        let lat = null,
-          lon = null;
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 0,
-            });
-          });
-          lat = pos.coords.latitude;
-          lon = pos.coords.longitude;
-        } catch (e) {
-          console.warn("⚠️ Gagal ambil lokasi:", e.message);
-        }
-
-        const compactValue = `${file.name}|${file.type}|${base64Data}`;
-        const existing = currentData.find((d) => d.question_id === qid);
         const dataEntry = {
           submission_id: submission.submission_id,
           question_id: qid,
-          value: compactValue,
-          lat,
-          lon,
+          value: base64Data,
+          lat: 2,
+          lon: 2,
         };
 
-        if (existing) Object.assign(existing, dataEntry);
+        cekData.push(dataEntry);
+
+        const existing = currentData.find((d) => d.question_id === qid);
+        if (existing) existing.value = base64Data;
         else currentData.push(dataEntry);
 
+        // ✅ Update status text
         infoEl.textContent = "📷 Sudah diunggah";
         infoEl.style.color = "green";
+
+        // ✅ Debug log
         console.log("✅ Foto tersimpan:", dataEntry);
+        console.log("📦 cekData:", cekData);
       };
+
       reader.readAsDataURL(file);
     });
   });
@@ -414,12 +420,21 @@ function tampilkanDetail(
       const selectedGroup = sel.options[sel.selectedIndex]?.dataset.group || "";
 
       const existing = currentData.find((d) => d.question_id === questionId);
+      cekData.push({
+        submission_id: submission.submission_id,
+        question_id: questionId,
+        value: newValue,
+        lat: 2,
+        lon: 2,
+      });
       if (existing) existing.value = newValue;
       else
         currentData.push({
           submission_id: submission.submission_id,
           question_id: questionId,
           value: newValue,
+          lat: 2,
+          lon: 2,
         });
 
       formContainer.querySelectorAll("select").forEach((childSel) => {
@@ -471,16 +486,17 @@ function tampilkanDetail(
   btnSave.addEventListener("click", () => {
     const payload = {
       submission_id: submission.submission_id,
-      data: currentData.filter((d) => !!d.value),
+      // data: currentData,
+      data: cekData,
     };
-    if (window.FlutterChannel) {
-      window.FlutterChannel.postMessage(
+    if (window.flutter_inappwebview) {
+      window.flutter_inappwebview.callHandler(
+        "FlutterChannel",
         JSON.stringify({ type: "onFormSubmit", payload })
       );
       alert("✅ Data berhasil dikirim ke Flutter!");
     } else {
-      console.log("📦 Mode web:", payload);
-      alert("⚠️ FlutterChannel tidak tersedia (mode web).");
+      console.log("⚠️ Tidak di dalam Flutter, data hasil form:", payload);
     }
   });
 
@@ -494,3 +510,4 @@ function tampilkanDetail(
 // ===============================
 window.addEventListener("offline", () => console.log("⚠️ Mode offline aktif"));
 window.addEventListener("online", () => console.log("✅ Kembali online"));
+//asdsad
