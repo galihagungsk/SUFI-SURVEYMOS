@@ -5,13 +5,14 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:prototype/presentation/homepage/home_page.dart';
 import 'package:prototype/presentation/login/bloc/login_bloc.dart';
 import 'package:prototype/presentation/login/loginpage.dart';
-import 'package:prototype/service/background_task_service.dart';
 import 'package:prototype/presentation/splashScreen/splash_page.dart';
 import 'package:prototype/utils/injector.dart' as di;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Permission.location.request();
+  await Permission.camera.request();
+  await Permission.storage.request();
   // await initializeService();
   await di.init();
   final getIt = GetIt.instance;

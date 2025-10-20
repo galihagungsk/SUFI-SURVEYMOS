@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:prototype/service/url.dart';
+import 'package:prototype/utils/url.dart';
 
 class ApiService {
   static Future<int> sendData(List<Map<String, dynamic>> data) async {

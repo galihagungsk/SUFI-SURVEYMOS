@@ -10,11 +10,11 @@ window.addEventListener("load", () => {
     return;
   }
 
-  if (window.FlutterChannel) {
-    window.FlutterChannel.postMessage(JSON.stringify({ status: "ready" }));
-    console.log("✅ Mengirim sinyal onWebReady ke FlutterChannel");
+  if (window.flutter_inappwebview) {
+    window.flutter_inappwebview.callHandler("onWebReady");
+    console.log("✅ Mengirim sinyal onWebReady ke Flutter");
   } else {
-    console.warn("⚠️ FlutterChannel belum tersedia");
+    console.warn("⚠️ flutter_inappwebview belum terdeteksi");
   }
 
   window.flutterReady = true;
@@ -32,17 +32,16 @@ function receiveDataFromFlutter(data) {
     if (!container) return;
 
     if (typeof data === "string") data = JSON.parse(data);
+
     tampilkanHasil(data, container);
 
     window.flutterReceivedData = data;
 
-    if (window.FlutterChannel) {
-      window.FlutterChannel.postMessage(
-        JSON.stringify({
-          status: "ok",
-          receivedKeys: Object.keys(data),
-        })
-      );
+    if (window.flutter_inappwebview) {
+      window.flutter_inappwebview.callHandler("onDataReceived", {
+        status: "ok",
+        count: Array.isArray(data) ? data.length : Object.keys(data).length,
+      });
     }
   } catch (error) {
     console.error("❌ Gagal parsing data dari Flutter:", error, data);
@@ -50,7 +49,7 @@ function receiveDataFromFlutter(data) {
 }
 
 // ===============================
-// 🧱 Tampilkan daftar submission
+// 🧱 Fungsi untuk menampilkan hasil ke halaman
 // ===============================
 function tampilkanHasil(data, container) {
   if (!data || !data.process) {
@@ -76,6 +75,7 @@ function tampilkanHasil(data, container) {
         <div class="section">
           <span class="label">NAMA LENGKAP PEMOHON</span><br>
           <span class="value">${submission.data?.[0]?.value || "-"}</span>
+          <span class="status">0/0</span>
         </div>
 
         <div class="section">
@@ -95,6 +95,7 @@ function tampilkanHasil(data, container) {
 
   container.innerHTML = html2;
 
+  // 🔹 Klik card → tampilkan detail di container yang sama
   const cards = container.querySelectorAll(".card");
   cards.forEach((card) => {
     card.addEventListener("click", () => {
@@ -103,7 +104,9 @@ function tampilkanHasil(data, container) {
       const selectedForm = Array.isArray(data.form)
         ? data.form.find(
             (f) =>
+              // cari di f.data
               f.data?.some((d) => d.submission_id == id) ||
+              // cari di f.pages[*].questionGroups[*].questions[*]
               f.pages?.some((p) =>
                 p.questionGroups?.some((g) =>
                   g.questions?.some((q) => q.submission_id == id)
@@ -134,7 +137,7 @@ function tampilkanHasil(data, container) {
 }
 
 // ===============================
-// 🧱 Tampilkan halaman detail submission
+// 🧱 Tampilkan halaman detail
 // ===============================
 function tampilkanDetail(
   submission,
@@ -160,16 +163,19 @@ function tampilkanDetail(
 
   let currentData = formData.data ? [...formData.data] : [];
 
+  // 🔹 Helper ambil nilai tersimpan
   function getValue(question, data) {
     if (!question || !Array.isArray(data)) return "";
     const found = data.find((d) => d.question_id === question.question_id);
     return found ? found.value || "" : "";
   }
 
+  // 🔹 Decision logic (equal / notEqual)
   function isVisibleDicission(page, groupId, data) {
     if (!page || !groupId) return true;
     const dicissions = page.dicissions || [];
     if (!Array.isArray(dicissions) || dicissions.length === 0) return true;
+
     let result = true;
     const related = dicissions.filter((d) => d.group_id === groupId);
     if (related.length === 0) return true;
@@ -201,9 +207,7 @@ function tampilkanDetail(
     return result;
   }
 
-  // ===============================
-  // 🔹 Render dinamis setiap page & group
-  // ===============================
+  // 🔹 Render form
   formData.pages.forEach((page) => {
     const pageEl = document.createElement("div");
     pageEl.classList.add("page-section");
@@ -227,9 +231,6 @@ function tampilkanDetail(
         const saved = getValue(q, currentData);
         let inputField = "";
 
-        // ===============================
-        // 🧩 FIELD: DROPDOWN
-        // ===============================
         if (q.type === "dropdown") {
           const opts = (dataOpsi || []).filter(
             (opt) => opt.collection_id === q.collection_id
@@ -252,53 +253,13 @@ function tampilkanDetail(
             data-group-id="${group.group_id}">
             <option value="">Harap Pilih</option>${optionsHtml}
           </select>`;
-        }
-
-        // ===============================
-        // 🧩 FIELD: FOTO (Compact Format)
-        // ===============================
-        else if (q.type === "foto") {
-          const parts = (saved || "").split("|");
-          const savedFileName = parts[0] || "";
-          const savedFileType = parts[1] || "";
-          const savedBase64 = parts[2] || "";
-          const hasImage = savedBase64.length > 0;
-
-          inputField = `
-            <div class="photo-upload-wrapper" style="margin-top:8px;">
-              <input type="file" id="${
-                q.code
-              }" accept="image/*" capture="environment" data-question-id="${
-            q.question_id
-          }" style="display:none"/>
-              <button type="button" class="btn-camera" data-target="${
-                q.code
-              }" style="background:#2196f3;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;">
-                📷 Ambil Foto
-              </button>
-              <p class="file-info" style="font-size:12px;color:${
-                hasImage ? "green" : "#999"
-              };margin-top:4px;">
-                ${
-                  hasImage
-                    ? `📷 ${savedFileName || "Sudah diunggah"}`
-                    : "Belum ada foto"
-                }
-              </p>
-              ${
-                hasImage
-                  ? `<img class="preview-thumb" src="data:${savedFileType};base64,${savedBase64}"
-                     style="max-width:140px;border-radius:8px;margin-top:6px;display:block;" />`
-                  : ""
-              }
-            </div>
-          `;
-        }
-
-        // ===============================
-        // 🧩 FIELD: TEXT
-        // ===============================
-        else {
+        } else if (q.type === "foto") {
+          inputField = `<input type="file" id="${q.code}" accept="image/*" />${
+            saved
+              ? `<p style="font-size:12px;color:green">📷 Sudah diunggah</p>`
+              : ""
+          }`;
+        } else {
           inputField = `<input type="text" id="${q.code}" data-question-id="${
             q.question_id
           }" value="${saved || ""}" placeholder="${q.hint || ""}" />`;
@@ -314,83 +275,7 @@ function tampilkanDetail(
     formContainer.appendChild(pageEl);
   });
 
-  // ===============================
-  // 📸 Handler kamera & file upload (format compact)
-  // ===============================
-  formContainer.querySelectorAll(".btn-camera").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const targetId = btn.getAttribute("data-target");
-      const input = document.getElementById(targetId);
-      if (input) input.click();
-    });
-  });
-
-  formContainer.querySelectorAll('input[type="file"]').forEach((fileInput) => {
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      const wrapper = e.target.closest(".photo-upload-wrapper");
-      const infoEl = wrapper.querySelector(".file-info");
-      const qid = parseInt(e.target.dataset.questionId);
-      if (!qid || !file) return;
-
-      const oldPreview = wrapper.querySelector(".preview-thumb");
-      if (oldPreview) oldPreview.remove();
-
-      infoEl.textContent = `📷 ${file.name}`;
-      infoEl.style.color = "#007bff";
-
-      const img = document.createElement("img");
-      img.className = "preview-thumb";
-      img.style.maxWidth = "140px";
-      img.style.borderRadius = "8px";
-      img.style.marginTop = "6px";
-      img.style.display = "block";
-      infoEl.insertAdjacentElement("afterend", img);
-
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64DataURL = reader.result;
-        img.src = base64DataURL;
-        const base64Data = base64DataURL.split(",")[1];
-
-        let lat = null,
-          lon = null;
-        try {
-          const pos = await new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: true,
-              timeout: 5000,
-              maximumAge: 0,
-            });
-          });
-          lat = pos.coords.latitude;
-          lon = pos.coords.longitude;
-        } catch (e) {
-          console.warn("⚠️ Gagal ambil lokasi:", e.message);
-        }
-
-        const compactValue = `${file.name}|${file.type}|${base64Data}`;
-        const existing = currentData.find((d) => d.question_id === qid);
-        const dataEntry = {
-          submission_id: submission.submission_id,
-          question_id: qid,
-          value: compactValue,
-          lat,
-          lon,
-        };
-
-        if (existing) Object.assign(existing, dataEntry);
-        else currentData.push(dataEntry);
-
-        infoEl.textContent = "📷 Sudah diunggah";
-        infoEl.style.color = "green";
-        console.log("✅ Foto tersimpan:", dataEntry);
-      };
-      reader.readAsDataURL(file);
-    });
-  });
-
-  // Evaluasi decision visibility & nested dropdown
+  // 🔹 Evaluasi visibilitas awal
   function evaluateVisibilityAll() {
     formData.pages.forEach((page) => {
       (page.questionGroups || []).forEach((group) => {
@@ -405,14 +290,17 @@ function tampilkanDetail(
   }
   evaluateVisibilityAll();
 
+  // 🔹 Event listener otomatis parent-child berdasarkan "group"
   formContainer.querySelectorAll("select").forEach((sel) => {
     sel.addEventListener("change", (e) => {
       const questionId = parseInt(sel.dataset.questionId);
+      const collectionId = parseInt(sel.dataset.collectionId);
       const value = sel.value;
       const label = sel.options[sel.selectedIndex]?.text || "";
       const newValue = value ? `${value}:${label}` : "";
       const selectedGroup = sel.options[sel.selectedIndex]?.dataset.group || "";
 
+      // update currentData
       const existing = currentData.find((d) => d.question_id === questionId);
       if (existing) existing.value = newValue;
       else
@@ -422,27 +310,36 @@ function tampilkanDetail(
           value: newValue,
         });
 
+      // cari semua dropdown lain yang punya opsi dengan group = selectedGroup
       formContainer.querySelectorAll("select").forEach((childSel) => {
+        console.log("Check Value");
         if (childSel === sel) return;
+
         const childCol = parseInt(childSel.dataset.collectionId);
         const allOpts = (dataOpsi || []).filter(
           (opt) => opt.collection_id === childCol
         );
 
+        // filter child berdasarkan group yang cocok
+        let filtered = allOpts;
+        if (selectedGroup) {
+          filtered = allOpts.filter(
+            (opt) =>
+              !opt.group ||
+              opt.group === selectedGroup ||
+              opt.group === value ||
+              opt.group === label
+          );
+        }
+
+        // hanya update child kalau ada group match
         const hasGroupMatch = allOpts.some(
           (opt) =>
             opt.group && (opt.group === selectedGroup || opt.group === value)
         );
         if (!hasGroupMatch) return;
 
-        const filtered = allOpts.filter(
-          (opt) =>
-            !opt.group ||
-            opt.group === selectedGroup ||
-            opt.group === value ||
-            opt.group === label
-        );
-
+        // rebuild opsi
         const oldValue = childSel.value;
         childSel.innerHTML = `<option value="">Harap Pilih</option>${filtered
           .map(
@@ -452,45 +349,35 @@ function tampilkanDetail(
               }>${opt.label}</option>`
           )
           .join("")}`;
+
+        if (value) {
+          // reset child jika parent punya nilai baru
+          childSel.value = "";
+          const existingChild = currentData.find(
+            (d) => d.question_id === parseInt(childSel.dataset.questionId)
+          );
+          if (existingChild) existingChild.value = "";
+        }
       });
 
+      // re-evaluasi decision
       evaluateVisibilityAll();
     });
   });
 
-  // Tombol Simpan & Kirim ke Flutter
-  const btnSave = document.createElement("button");
-  btnSave.textContent = "💾 Simpan & Kirim ke Flutter";
-  btnSave.style.cssText = `
-    background:#2196f3;color:#fff;border:none;
-    padding:10px 18px;border-radius:6px;
-    cursor:pointer;margin-top:14px;display:block;
-  `;
-  formContainer.after(btnSave);
-
-  btnSave.addEventListener("click", () => {
-    const payload = {
-      submission_id: submission.submission_id,
-      data: currentData.filter((d) => !!d.value),
-    };
-    if (window.FlutterChannel) {
-      window.FlutterChannel.postMessage(
-        JSON.stringify({ type: "onFormSubmit", payload })
-      );
-      alert("✅ Data berhasil dikirim ke Flutter!");
-    } else {
-      console.log("📦 Mode web:", payload);
-      alert("⚠️ FlutterChannel tidak tersedia (mode web).");
-    }
-  });
-
+  // 🔙 Tombol kembali
   container.querySelector("#btnBack").addEventListener("click", () => {
-    tampilkanHasil(window.flutterReceivedData, container);
+    tampilkanHasil(data, container);
   });
 }
 
 // ===============================
-// 🌐 Listener koneksi (opsional)
+// 🌐 Event listener koneksi (opsional)
 // ===============================
-window.addEventListener("offline", () => console.log("⚠️ Mode offline aktif"));
-window.addEventListener("online", () => console.log("✅ Kembali online"));
+window.addEventListener("offline", () => {
+  console.log("⚠️ Mode offline aktif");
+});
+
+window.addEventListener("online", () => {
+  console.log("✅ Kembali online");
+});
