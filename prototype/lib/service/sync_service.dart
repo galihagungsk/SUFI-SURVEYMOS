@@ -4,7 +4,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:prototype/service/api_service.dart';
 import 'package:prototype/service/local_helper.dart';
-import 'package:prototype/utils/db_sqf_helper.dart';
 import 'package:prototype/utils/network_checker.dart';
 
 class SyncService {
