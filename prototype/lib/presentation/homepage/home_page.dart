@@ -35,6 +35,7 @@ class _HomePageState extends State<HomePage> {
               initialUrlRequest: URLRequest(url: WebUri(UrlService.baseUrlWeb)),
               initialSettings: InAppWebViewSettings(
                 javaScriptEnabled: true,
+                geolocationEnabled: true,
                 mediaPlaybackRequiresUserGesture: false,
               ),
               onWebViewCreated: (controller) {
@@ -48,6 +49,11 @@ class _HomePageState extends State<HomePage> {
                       final message = args.first;
                       debugPrint("📩 JS → Flutter: $message");
                       setState(() => messageFromJs = message);
+                      await LocalJsonHelper.simpanDataFormKeFile(
+                        messageFromJs,
+                        fileName: "dariJson.json",
+                        folderName: "dariJS",
+                      );
 
                       try {
                         final data = jsonDecode(message);
@@ -72,7 +78,6 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
 
-              // 🔥 Ketika halaman selesai dimuat
               onLoadStop: (controller, url) async {
                 debugPrint("✅ Halaman selesai dimuat: $url");
                 await _controller?.evaluateJavascript(
@@ -80,12 +85,6 @@ class _HomePageState extends State<HomePage> {
                       "if(window.onWebReady){onWebReady();} else if(window.receiveDataFromFlutter){receiveDataFromFlutter({status:'ready'});}",
                 );
               },
-
-              // 🎯 Handler untuk file input (kamera/galeri)
-              // Note: androidOnShowFileChooser is not available in the installed
-              // flutter_inappwebview version; remove this callback or replace it
-              // with the correct API (for example `onShowFileChooser` or a platform-specific
-              // implementation) depending on your package version.
             ),
           ),
 
@@ -94,7 +93,6 @@ class _HomePageState extends State<HomePage> {
             "📩 Pesan dari JS: $messageFromJs",
             style: const TextStyle(fontSize: 15),
           ),
-
           ElevatedButton(
             onPressed: _sendDataToWebView,
             child: const Text("Kirim Data ke WebView"),
