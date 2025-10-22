@@ -89,10 +89,10 @@ class _HomePageState extends State<HomePage> {
           ),
 
           // 💬 Tampilkan pesan dari JS
-          Text(
-            "📩 Pesan dari JS: $messageFromJs",
-            style: const TextStyle(fontSize: 15),
-          ),
+          // Text(
+          //   "📩 Pesan dari JS: $messageFromJs",
+          //   style: const TextStyle(fontSize: 15),
+          // ),
           ElevatedButton(
             onPressed: _sendDataToWebView,
             child: const Text("Kirim Data ke WebView"),
