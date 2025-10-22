@@ -17,7 +17,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   InAppWebViewController? _controller;
   bool webReady = false;
-  String messageFromJs = "";
 
   @override
   void initState() {
@@ -46,13 +45,21 @@ class _HomePageState extends State<HomePage> {
                   handlerName: 'FlutterChannel',
                   callback: (args) async {
                     if (args.isNotEmpty) {
-                      final message = args.first;
+                      final message = jsonDecode(args.first);
                       debugPrint("📩 JS → Flutter: $message");
-                      setState(() => messageFromJs = message);
+                      // setState(() => messageFromJs = message);
+
                       await LocalJsonHelper.simpanDataFormKeFile(
-                        messageFromJs,
+                        message,
                         fileName: "dariJson.json",
                         folderName: "dariJS",
+                      );
+                      await LocalJsonHelper.updateDataFormKeFile(
+                        message["data"]["data"],
+                        folderName: "process",
+                        merge: false,
+                        fileName:
+                            "submission#${message["data"]["submission_id"]}#${message["type"]}.json",
                       );
 
                       try {

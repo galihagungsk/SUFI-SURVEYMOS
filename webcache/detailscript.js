@@ -29,7 +29,6 @@ function getUserLocation() {
  * ✅ Fungsi untuk ambil kembali data dari sessionStorage + dekompres
  */
 function getDataFromSession(key) {
-  const container = document.getElementById("flutter-data-container");
   try {
     const compressedData = sessionStorage.getItem(key);
     if (!compressedData) return null;
@@ -41,7 +40,12 @@ function getDataFromSession(key) {
   }
 }
 
-// function tampilkanDetail(submission, container, dataForm, data, dataOpsi) {
+// ✅ Jadikan global supaya bisa digunakan oleh semua fungsi termasuk refreshAllPhotoStatus()
+let currentData = [];
+
+// ===============================
+// 🔹 Fungsi utama untuk menampilkan detail + form
+// ===============================
 function tampilkanDetail() {
   const container = document.getElementById("flutter-data-container");
   let submission = getDataFromSession("selectedSubmission");
@@ -68,9 +72,8 @@ function tampilkanDetail() {
     return;
   }
 
-  let currentData = formData.data ? [...formData.data] : [];
-  let cekData = [];
-
+  // ✅ Jangan pakai `let`, karena currentData harus global
+  currentData = formData.data ? [...formData.data] : [];
   function getValue(question, data) {
     if (!question || !Array.isArray(data)) return "";
     const found = data.find((d) => d.question_id === question.question_id);
@@ -81,6 +84,7 @@ function tampilkanDetail() {
     if (!page || !groupId) return true;
     const dicissions = page.dicissions || [];
     if (!Array.isArray(dicissions) || dicissions.length === 0) return true;
+
     let result = true;
     const related = dicissions.filter((d) => d.group_id === groupId);
     if (related.length === 0) return true;
@@ -97,15 +101,12 @@ function tampilkanDetail() {
         ? refValue.split(":")[0]
         : refValue;
 
-      switch (dic.dicission_type) {
-        case 402:
-          result =
-            refKey === dic.dicission_value || refValue === dic.dicission_value;
-          break;
-        case 403:
-          result =
-            refKey !== dic.dicission_value && refValue !== dic.dicission_value;
-          break;
+      if (dic.dicission_type === 402) {
+        result =
+          refKey === dic.dicission_value || refValue === dic.dicission_value;
+      } else if (dic.dicission_type === 403) {
+        result =
+          refKey !== dic.dicission_value && refValue !== dic.dicission_value;
       }
       if (!result) break;
     }
@@ -138,9 +139,7 @@ function tampilkanDetail() {
         const saved = getValue(q, currentData);
         let inputField = "";
 
-        // ===============================
-        // 🧩 FIELD: DROPDOWN
-        // ===============================
+        // Dropdown
         if (q.type === "dropdown") {
           const opts = (dataOpsi || []).filter(
             (opt) => opt.collection_id === q.collection_id
@@ -166,49 +165,36 @@ function tampilkanDetail() {
         }
 
         // ===============================
-        // 🧩 FIELD: FOTO (Compact Format)
+        // 📷 FIELD FOTO — FIX STATUS DINAMIS (tidak pakai saved lagi)
         // ===============================
         else if (q.type === "foto") {
-          const parts = (saved || "").split("|");
-          const savedFileName = parts[0] || "";
-          const savedFileType = parts[1] || "";
-          const savedBase64 = parts[2] || "";
-          const hasImage = savedBase64.length > 0;
+          const existingPhoto = currentData.find(
+            (d) => d.question_id === q.question_id
+          );
+          const hasImage = existingPhoto && existingPhoto.value;
 
           inputField = `
             <div class="photo-upload-wrapper" style="margin-top:8px;">
               <input type="file" id="${
                 q.code
-              }" accept="image/*" capture="environment" data-question-id="${
-            q.question_id
-          }" style="display:none"/>
-              <button type="button" class="btn-camera" data-target="${
-                q.code
-              }" style="background:#2196f3;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;">
+              }" accept="image/*" capture="environment"
+                data-question-id="${q.question_id}" style="display:none" />
+
+              <button type="button" class="btn-camera" data-target="${q.code}"
+                style="background:#2196f3;color:#fff;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;">
                 📷 Ambil Foto
               </button>
+
               <p class="file-info" style="font-size:12px;color:${
                 hasImage ? "green" : "#999"
               };margin-top:4px;">
-                ${
-                  hasImage
-                    ? `📷 ${savedFileName || "Sudah diunggah"}`
-                    : "Belum ada foto"
-                }
+                ${hasImage ? "📷 Foto sudah tersimpan" : "Belum ada foto"}
               </p>
-              ${
-                hasImage
-                  ? `<img class="preview-thumb" src="data:${savedFileType};base64,${savedBase64}"
-                     style="max-width:140px;border-radius:8px;margin-top:6px;display:block;" />`
-                  : ""
-              }
             </div>
           `;
         }
 
-        // ===============================
-        // 🧩 FIELD: TEXT
-        // ===============================
+        // Input Text
         else {
           inputField = `<input type="text" id="${q.code}" data-question-id="${
             q.question_id
@@ -225,120 +211,138 @@ function tampilkanDetail() {
     formContainer.appendChild(pageEl);
   });
 
-  // 📸 Handler kamera & file upload (format compact)
+  // 📸 Event tombol kamera → klik input file
   document.querySelectorAll(".btn-camera").forEach((btn) => {
     btn.addEventListener("click", () => {
       const targetId = btn.getAttribute("data-target");
-      document.getElementById(targetId).click();
+      document.getElementById(targetId)?.click();
     });
   });
+  // ✅ Fungsi untuk refresh status foto berbasis currentData (pakai elemen yang sudah dirender)
+  function refreshAllPhotoStatus() {
+    formContainer
+      .querySelectorAll(".photo-upload-wrapper")
+      .forEach((wrapper) => {
+        const fileInput = wrapper.querySelector('input[type="file"]');
+        const infoEl = wrapper.querySelector(".file-info");
+        if (!fileInput || !infoEl) return;
 
-  // ✅ Perbaikan typo selector (ini sebelumnya menyebabkan JS berhenti total)
+        const qid = parseInt(fileInput.dataset.questionId);
+        const exists = currentData.find((d) => d.question_id === qid);
+
+        if (exists && exists.value && exists.value.length > 0) {
+          infoEl.textContent = "📷 Foto sudah tersimpan";
+          infoEl.style.color = "green";
+        } else {
+          infoEl.textContent = "Belum ada foto";
+          infoEl.style.color = "#999";
+        }
+      });
+  }
+
+  // ✅ Listener input teks
   formContainer.querySelectorAll('input[type="text"]').forEach((textInput) => {
-    3;
     textInput.addEventListener("input", async (e) => {
       const qid = parseInt(e.target.dataset.questionId);
-      const value = e.target.value;
+      const value = e.target.value ?? "";
 
-      // Hapus data jika value kosong/null
       if (!value) {
-        // Hapus dari cekData
-        // cekData = cekData.filter((d) => d.question_id !== questionId);
-
-        // // Hapus dari currentData
-        currentData = currentData.filter((d) => d.question_id !== questionId);
-
-        // Lanjutkan ke evaluasi tampilan saja
+        // Hapus dari currentData jika kosong
+        currentData = currentData.filter((d) => d.question_id !== qid);
         evaluateVisibilityAll();
+        refreshAllPhotoStatus();
         return;
       }
+
       const loc = await getUserLocation();
-      const entry = {
-        submission_id: submission.submission_id,
-        question_id: qid,
-        value: value,
-        lat: loc ? loc.lat : null,
-        lon: loc ? loc.lon : null,
-      };
-
-      // cekData.push(entry);
-
       const existing = currentData.find((d) => d.question_id === qid);
-      if (existing) existing.value = value;
-      else currentData.push(entry);
+      if (existing) {
+        existing.value = value;
+        existing.lat = loc?.lat ?? existing.lat ?? null;
+        existing.lon = loc?.lon ?? existing.lon ?? null;
+      } else {
+        currentData.push({
+          submission_id: submission.submission_id,
+          question_id: qid,
+          value,
+          lat: loc?.lat ?? null,
+          lon: loc?.lon ?? null,
+        });
+      }
+      evaluateVisibilityAll();
+      refreshAllPhotoStatus();
     });
   });
 
-  // ✅ Perbaikan besar untuk ambil foto & masuk ke cekData
+  // ✅ Listener file input (upload foto)
   formContainer.querySelectorAll('input[type="file"]').forEach((fileInput) => {
     fileInput.addEventListener("change", (e) => {
       try {
-        const file = e.target.files[0];
-        if (!file) {
-          console.warn("⚠️ Tidak ada file yang dipilih.");
-          return;
-        }
+        const file = e.target.files?.[0];
+        if (!file) return console.warn("⚠️ Tidak ada file yang dipilih.");
 
         const reader = new FileReader();
         const qid = parseInt(e.target.getAttribute("data-question-id"));
         const parent = e.target.closest(".photo-upload-wrapper");
-        const infoEl = parent.querySelector(".file-info");
-        // const imgPreview =
-        //   parent.querySelector(".preview-thumb") ||
-        //   document.createElement("img");
+        const infoEl = parent?.querySelector(".file-info");
 
         reader.onload = () => {
           const img = new Image();
           img.src = reader.result;
 
           img.onload = async () => {
-            // Gunakan ukuran asli gambar
+            // Render ke canvas (tanpa resize, hanya kompres kualitas)
             const canvas = document.createElement("canvas");
             canvas.width = img.width;
             canvas.height = img.height;
-
             const ctx = canvas.getContext("2d");
             ctx.drawImage(img, 0, 0);
 
-            // 🔥 Kompres hanya kualitas, tanpa resize
-            const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.7); // 70% kualitas
-            const compressedBase64 = compressedDataUrl.split(",")[1];
+            // Kompres JPEG kualitas 0.7
+            const compressedBase64 = canvas
+              .toDataURL("image/jpeg", 0.7)
+              .split(",")[1];
             const loc = await getUserLocation();
 
             // Simpan ke currentData
             const existing = currentData.find((d) => d.question_id === qid);
             if (existing) {
               existing.value = compressedBase64;
+              existing.lat = loc?.lat ?? existing.lat ?? null;
+              existing.lon = loc?.lon ?? existing.lon ?? null;
             } else {
               currentData.push({
                 submission_id: submission.submission_id,
                 question_id: qid,
                 value: compressedBase64,
-                lat: loc ? loc.lat : null,
-                lon: loc ? loc.lon : null,
+                lat: loc?.lat ?? null,
+                lon: loc?.lon ?? null,
               });
             }
 
-            // Log ukuran sebelum & sesudah kompres
-            console.log("✅ Foto dikompress tanpa resize:", {
-              originalSize: reader.result.length,
-              compressedSize: compressedBase64.length,
-            });
+            console.log("✅ Foto disimpan ke currentData:", currentData);
 
-            // Ubah status di UI
-            infoEl.textContent = "📷 Sudah diunggah";
-            infoEl.style.color = "green";
+            // Update status UI di wrapper ini
+            if (infoEl) {
+              infoEl.textContent = "📷 Foto sudah tersimpan";
+              infoEl.style.color = "green";
+            }
+
+            // Pastikan semua status foto sinkron
+            refreshAllPhotoStatus();
+            evaluateVisibilityAll(); // kalau ada visibilitas bergantung dropdown/pertanyaan lain
+            refreshAllPhotoStatus(); // panggil lagi jika ada DOM show/hide
           };
         };
 
         reader.readAsDataURL(file);
-      } catch (error) {
-        console.error("❌ Gagal memproses file foto:", error);
+      } catch (err) {
+        console.error("❌ Gagal memproses file foto:", err);
       }
     });
   });
 
-  // Evaluasi decision visibility & nested dropdown
+  // ✅ Evaluasi decision visibility & nested dropdown
   function evaluateVisibilityAll() {
     formData.pages.forEach((page) => {
       (page.questionGroups || []).forEach((group) => {
@@ -351,48 +355,43 @@ function tampilkanDetail() {
       });
     });
   }
+  // Panggilan awal
   evaluateVisibilityAll();
+  refreshAllPhotoStatus();
 
+  // ✅ Listener dropdown
   formContainer.querySelectorAll("select").forEach((sel) => {
-    sel.addEventListener("change", async (e) => {
+    sel.addEventListener("change", async () => {
       const questionId = parseInt(sel.dataset.questionId);
       const value = sel.value;
       const label = sel.options[sel.selectedIndex]?.text || "";
       const newValue = value ? `${value}:${label}` : "";
       const selectedGroup = sel.options[sel.selectedIndex]?.dataset.group || "";
 
-      // Hapus data jika value kosong/null
       if (!value) {
-        // Hapus dari cekData
-        // cekData = cekData.filter((d) => d.question_id !== questionId);
-
-        // // Hapus dari currentData
         currentData = currentData.filter((d) => d.question_id !== questionId);
-
-        // Lanjutkan ke evaluasi tampilan saja
         evaluateVisibilityAll();
+        refreshAllPhotoStatus();
         return;
       }
 
-      const existing = currentData.find((d) => d.question_id === questionId);
       const loc = await getUserLocation();
-      // cekData.push({
-      //   submission_id: submission.submission_id,
-      //   question_id: questionId,
-      //   value: newValue,
-      //   lat: loc ? loc.lat : null,
-      //   lon: loc ? loc.lon : null,
-      // });
-      if (existing) existing.value = newValue;
-      else
+      const existing = currentData.find((d) => d.question_id === questionId);
+      if (existing) {
+        existing.value = newValue;
+        existing.lat = loc?.lat ?? existing.lat ?? null;
+        existing.lon = loc?.lon ?? existing.lon ?? null;
+      } else {
         currentData.push({
           submission_id: submission.submission_id,
           question_id: questionId,
           value: newValue,
-          lat: loc ? loc.lat : null,
-          lon: loc ? loc.lon : null,
+          lat: loc?.lat ?? null,
+          lon: loc?.lon ?? null,
         });
+      }
 
+      // Nested options filter (jika ada group)
       formContainer.querySelectorAll("select").forEach((childSel) => {
         if (childSel === sel) return;
         const childCol = parseInt(childSel.dataset.collectionId);
@@ -426,10 +425,11 @@ function tampilkanDetail() {
       });
 
       evaluateVisibilityAll();
+      refreshAllPhotoStatus();
     });
   });
 
-  // Tombol Simpan & Kirim ke Flutter
+  // ✅ Tombol Simpan & Kirim ke Flutter
   const btnSave = document.createElement("button");
   btnSave.textContent = "💾 Simpan & Kirim ke Flutter";
   btnSave.style.cssText = `
@@ -440,32 +440,34 @@ function tampilkanDetail() {
   formContainer.after(btnSave);
 
   btnSave.addEventListener("click", () => {
-    dataForm.data = currentData;
-    const payload = {
+    // Mutakhirkan formData.data dengan currentData terbaru
+    formData.data = currentData;
+    const data = {
       submission_id: submission.submission_id,
-      data: LZString.compressToUTF16(JSON.stringify(dataForm)),
-      // data: cekData,
+      data: formData,
     };
+
     if (window.flutter_inappwebview) {
       window.flutter_inappwebview.callHandler(
-        "DataToFlutter",
-        JSON.stringify({ type: "onFormSubmit", payload })
+        "FlutterChannel",
+        JSON.stringify({ status: "update", type: "form", data })
       );
       alert("✅ Data berhasil dikirim ke Flutter!");
     } else {
-      console.log("⚠️ Tidak di dalam Flutter, data hasil form:", payload);
+      console.log("⚠️ Tidak di dalam Flutter, data hasil form:", data);
     }
   });
 
+  // ✅ Tombol back
   container.querySelector("#btnBack").addEventListener("click", () => {
     window.location.href = "index.html";
   });
-}
+} // ⬅️ akhir function tampilkanDetail()
 
+// ✅ Loader halaman
 window.addEventListener("load", () => {
   console.log("🌐 Halaman detail dimuat, coba ambil sessionStorage...");
 
-  // Panggil tampilkanDetail hanya jika data ada
   if (sessionStorage.getItem("selectedSubmission")) {
     try {
       tampilkanDetail();
@@ -474,9 +476,10 @@ window.addEventListener("load", () => {
       console.error("❌ Error saat menjalankan tampilkanDetail():", err);
     }
   } else {
-    document.getElementById(
-      "flutter-data-container"
-    ).innerHTML = `<p style="color:red;">⚠️ Tidak ada data di sessionStorage. Pastikan halaman sebelumnya mengirim data.</p>`;
+    const container = document.getElementById("flutter-data-container");
+    container.innerHTML = `<p style="color:red;">⚠️ Tidak ada data di sessionStorage. Pastikan halaman sebelumnya mengirim data.</p>`;
     console.warn("❗ SessionStorage kosong. Tidak bisa load detail.");
   }
 });
+
+//DONE

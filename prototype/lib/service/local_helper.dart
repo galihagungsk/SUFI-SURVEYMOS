@@ -172,4 +172,52 @@ class LocalJsonHelper {
       return hasil;
     }
   }
+
+  /// Tambahkan ke dalam class LocalJsonHelper
+  static Future<void> updateDataFormKeFile(
+    Map<String, dynamic> dataBaru, {
+    String folderName = "data",
+    String fileName = "pertanyaan.json",
+    bool merge = true, // true = gabung (merge), false = replace seluruhnya
+  }) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final filePath = "${dir.path}/$folderName/$fileName";
+      final file = File(filePath);
+
+      Map<String, dynamic> dataLama = {};
+
+      // Jika file sudah ada → baca isinya dulu untuk merge
+      if (await file.exists()) {
+        debugPrint("Data file sudah ada");
+        final jsonString = await file.readAsString();
+        final decoded = jsonDecode(jsonString);
+
+        if (decoded is Map<String, dynamic>) {
+          dataLama = decoded;
+        } else {
+          debugPrint(
+            "⚠️ Format file lama bukan Map<String, dynamic>, akan ditimpa.",
+          );
+        }
+      } else {
+        // Buat folder kalau belum ada
+        debugPrint("Data file blm sudah ada");
+        final targetDir = Directory("${dir.path}/$folderName");
+        if (!await targetDir.exists()) {
+          await targetDir.create(recursive: true);
+        }
+      }
+
+      // Tentukan data final → merge atau replace
+      final dataFinal = merge ? {...dataLama, ...dataBaru} : dataBaru;
+
+      // Simpan kembali ke file JSON
+      await file.writeAsString(jsonEncode(dataFinal));
+      debugPrint("✏️ File diperbarui di: $filePath (merge: $merge)");
+    } catch (e, st) {
+      debugPrint("❌ Gagal update file $fileName: $e");
+      debugPrint(st.toString());
+    }
+  }
 }
