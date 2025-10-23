@@ -220,4 +220,56 @@ class LocalJsonHelper {
       debugPrint(st.toString());
     }
   }
+
+  /// Pindahkan file yang namanya mengandung kata kunci tertentu ke folder lain.
+  /// Akan memberi exception jika folder asal belum ada.
+  static Future<void> pindahkanFileDenganFilter({
+    required String sourceFolder,
+    required String targetFolder,
+    required String keyword, // contoh: "pertanyaan" atau "941"
+  }) async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final sourceDir = Directory("${dir.path}/$sourceFolder");
+      final targetDir = Directory("${dir.path}/$targetFolder");
+
+      // ✅ Cek folder asal ada atau tidak
+      if (!await sourceDir.exists()) {
+        throw Exception("⚠️ Folder asal '$sourceFolder' tidak ditemukan!");
+      }
+
+      // ✅ Buat folder tujuan jika belum ada
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+        debugPrint("📁 Folder tujuan dibuat: ${targetDir.path}");
+      }
+
+      // ✅ Ambil semua file & filter berdasarkan nama
+      final files = sourceDir.listSync().whereType<File>();
+      final matchedFiles = files.where((file) {
+        final fileName = file.path
+            .split(Platform.pathSeparator)
+            .last
+            .toLowerCase();
+        return fileName.contains(keyword.toLowerCase());
+      }).toList();
+
+      if (matchedFiles.isEmpty) {
+        debugPrint("ℹ️ Tidak ada file yang mengandung kata '$keyword'");
+        return;
+      }
+
+      // ✅ Pindahkan semua file yang cocok
+      for (final file in matchedFiles) {
+        final fileName = file.path.split(Platform.pathSeparator).last;
+        final newPath = "${targetDir.path}/$fileName";
+
+        await file.rename(newPath);
+        debugPrint("✅ Dipindahkan: $fileName → $targetFolder");
+      }
+    } catch (e, st) {
+      debugPrint("❌ Gagal memindahkan file: $e");
+      debugPrint(st.toString());
+    }
+  }
 }
