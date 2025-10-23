@@ -49,18 +49,37 @@ class _HomePageState extends State<HomePage> {
                       debugPrint("📩 JS → Flutter: $message");
                       // setState(() => messageFromJs = message);
 
-                      await LocalJsonHelper.simpanDataFormKeFile(
-                        message,
-                        fileName: "dariJson.json",
-                        folderName: "dariJS",
-                      );
-                      await LocalJsonHelper.updateDataFormKeFile(
-                        message["data"]["data"],
-                        folderName: "process",
-                        merge: false,
-                        fileName:
-                            "submission#${message["data"]["submission_id"]}#${message["type"]}.json",
-                      );
+                      // await LocalJsonHelper.simpanDataFormKeFile(
+                      //   message,
+                      //   fileName: "dariJson.json",
+                      //   folderName: "dariJS",
+                      // );
+                      if (message['status'] == "update") {
+                        await LocalJsonHelper.updateDataFormKeFile(
+                          message["data"]["data"],
+                          folderName: "process",
+                          merge: false,
+                          fileName:
+                              "submission#${message["data"]["submission_id"]}#${message["type"]}.json",
+                        );
+                      } else if (message['status'] == "upload") {
+                        try {
+                          await LocalJsonHelper.updateDataFormKeFile(
+                            message["data"]["data"],
+                            folderName: "process",
+                            merge: false,
+                            fileName:
+                                "submission#${message["data"]["submission_id"]}#${message["type"]}.json",
+                          );
+                          await LocalJsonHelper.pindahkanFileDenganFilter(
+                            sourceFolder: "process",
+                            targetFolder: "upload",
+                            keyword: message["data"]["submission_id"],
+                          );
+                        } on Exception catch (e) {
+                          debugPrint("Gagal Upload: $e");
+                        }
+                      }
 
                       try {
                         final data = jsonDecode(message);
